@@ -3,6 +3,7 @@
 ## 简介
 
 `3DGS` 项目旨在实现 3D Gaussian Splatting 技术，用于高效的 3D 数据处理和渲染。本项目基于 Python 和 PyTorch，主要对3DGS的模型部分进行复现。
+叶垚森 2021104010
 
 ## 安装
 
