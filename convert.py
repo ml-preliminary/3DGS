@@ -14,7 +14,7 @@ import logging
 from argparse import ArgumentParser
 import shutil
 
-# This Python script is based on the shell converter script provided in the MipNerF 360 repository.
+# Colmap转换器
 parser = ArgumentParser("Colmap converter")
 parser.add_argument("--no_gpu", action='store_true')
 parser.add_argument("--skip_matching", action='store_true')
@@ -24,14 +24,16 @@ parser.add_argument("--colmap_executable", default="", type=str)
 parser.add_argument("--resize", action="store_true")
 parser.add_argument("--magick_executable", default="", type=str)
 args = parser.parse_args()
+# 设置COLMAP和ImageMagick命令
 colmap_command = '"{}"'.format(args.colmap_executable) if len(args.colmap_executable) > 0 else "colmap"
 magick_command = '"{}"'.format(args.magick_executable) if len(args.magick_executable) > 0 else "magick"
 use_gpu = 1 if not args.no_gpu else 0
 
+# 如果没有跳过特征匹配，执行以下步骤
 if not args.skip_matching:
     os.makedirs(args.source_path + "/distorted/sparse", exist_ok=True)
 
-    ## Feature extraction
+    # 特征提取
     feat_extracton_cmd = colmap_command + " feature_extractor "\
         "--database_path " + args.source_path + "/distorted/database.db \
         --image_path " + args.source_path + "/input \
@@ -43,7 +45,7 @@ if not args.skip_matching:
         logging.error(f"Feature extraction failed with code {exit_code}. Exiting.")
         exit(exit_code)
 
-    ## Feature matching
+    # 特征匹配
     feat_matching_cmd = colmap_command + " exhaustive_matcher \
         --database_path " + args.source_path + "/distorted/database.db \
         --SiftMatching.use_gpu " + str(use_gpu)
@@ -52,9 +54,7 @@ if not args.skip_matching:
         logging.error(f"Feature matching failed with code {exit_code}. Exiting.")
         exit(exit_code)
 
-    ### Bundle adjustment
-    # The default Mapper tolerance is unnecessarily large,
-    # decreasing it speeds up bundle adjustment steps.
+    # 捆绑调整
     mapper_cmd = (colmap_command + " mapper \
         --database_path " + args.source_path + "/distorted/database.db \
         --image_path "  + args.source_path + "/input \
@@ -65,8 +65,7 @@ if not args.skip_matching:
         logging.error(f"Mapper failed with code {exit_code}. Exiting.")
         exit(exit_code)
 
-### Image undistortion
-## We need to undistort our images into ideal pinhole intrinsics.
+# 图像去畸变
 img_undist_cmd = (colmap_command + " image_undistorter \
     --image_path " + args.source_path + "/input \
     --input_path " + args.source_path + "/distorted/sparse/0 \
@@ -77,6 +76,7 @@ if exit_code != 0:
     logging.error(f"Mapper failed with code {exit_code}. Exiting.")
     exit(exit_code)
 
+# 重新组织稀疏文件夹中的文件
 files = os.listdir(args.source_path + "/sparse")
 os.makedirs(args.source_path + "/sparse/0", exist_ok=True)
 # Copy each file from the source directory to the destination directory
@@ -87,19 +87,21 @@ for file in files:
     destination_file = os.path.join(args.source_path, "sparse", "0", file)
     shutil.move(source_file, destination_file)
 
-if(args.resize):
+# 如果启用图像大小调整，执行以下步骤进行图像大小调整
+if args.resize:
     print("Copying and resizing...")
 
-    # Resize images.
+    # 创建调整大小后的图像文件夹
     os.makedirs(args.source_path + "/images_2", exist_ok=True)
     os.makedirs(args.source_path + "/images_4", exist_ok=True)
     os.makedirs(args.source_path + "/images_8", exist_ok=True)
-    # Get the list of files in the source directory
+
+    # 获取原始图像文件列表
     files = os.listdir(args.source_path + "/images")
-    # Copy each file from the source directory to the destination directory
     for file in files:
         source_file = os.path.join(args.source_path, "images", file)
 
+        # 复制并调整图像大小到50%
         destination_file = os.path.join(args.source_path, "images_2", file)
         shutil.copy2(source_file, destination_file)
         exit_code = os.system(magick_command + " mogrify -resize 50% " + destination_file)
@@ -107,6 +109,7 @@ if(args.resize):
             logging.error(f"50% resize failed with code {exit_code}. Exiting.")
             exit(exit_code)
 
+        # 复制并调整图像大小到25%
         destination_file = os.path.join(args.source_path, "images_4", file)
         shutil.copy2(source_file, destination_file)
         exit_code = os.system(magick_command + " mogrify -resize 25% " + destination_file)
@@ -114,6 +117,7 @@ if(args.resize):
             logging.error(f"25% resize failed with code {exit_code}. Exiting.")
             exit(exit_code)
 
+        # 复制并调整图像大小到12.5%
         destination_file = os.path.join(args.source_path, "images_8", file)
         shutil.copy2(source_file, destination_file)
         exit_code = os.system(magick_command + " mogrify -resize 12.5% " + destination_file)

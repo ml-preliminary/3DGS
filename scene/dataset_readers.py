@@ -23,26 +23,18 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 
-class CameraInfo(NamedTuple):
-    uid: int
-    R: np.array
-    T: np.array
-    FovY: np.array
-    FovX: np.array
-    image: np.array
-    image_path: str
-    image_name: str
-    width: int
-    height: int
+class CameraInfo(namedtuple('CameraInfo', ['uid', 'R', 'T', 'FovY', 'FovX', 'image', 'image_path', 'image_name', 'width', 'height'])):
+    __slots__ = ()
 
-class SceneInfo(NamedTuple):
-    point_cloud: BasicPointCloud
-    train_cameras: list
-    test_cameras: list
-    nerf_normalization: dict
-    ply_path: str
+class SceneInfo(namedtuple('SceneInfo', ['point_cloud', 'train_cameras', 'test_cameras', 'nerf_normalization', 'ply_path'])):
+    __slots__ = ()
 
 def getNerfppNorm(cam_info):
+    """
+    计算 NeRF++ 的归一化参数，包括平移和半径。
+    :param cam_info: 相机信息列表
+    :return: 包含平移和半径的字典
+    """
     def get_center_and_diag(cam_centers):
         cam_centers = np.hstack(cam_centers)
         avg_cam_center = np.mean(cam_centers, axis=1, keepdims=True)
@@ -60,16 +52,21 @@ def getNerfppNorm(cam_info):
 
     center, diagonal = get_center_and_diag(cam_centers)
     radius = diagonal * 1.1
-
     translate = -center
 
     return {"translate": translate, "radius": radius}
 
 def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+    """
+    读取 Colmap 相机信息，包括内外参和图像数据。
+    :param cam_extrinsics: 相机外参字典
+    :param cam_intrinsics: 相机内参字典
+    :param images_folder: 图像文件夹路径
+    :return: 相机信息列表
+    """
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
-        # the exact output you're looking for:
         sys.stdout.write("Reading camera {}/{}".format(idx+1, len(cam_extrinsics)))
         sys.stdout.flush()
 
@@ -82,11 +79,11 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         R = np.transpose(qvec2rotmat(extr.qvec))
         T = np.array(extr.tvec)
 
-        if intr.model=="SIMPLE_PINHOLE":
+        if intr.model == "SIMPLE_PINHOLE":
             focal_length_x = intr.params[0]
             FovY = focal2fov(focal_length_x, height)
             FovX = focal2fov(focal_length_x, width)
-        elif intr.model=="PINHOLE":
+        elif intr.model == "PINHOLE":
             focal_length_x = intr.params[0]
             focal_length_y = intr.params[1]
             FovY = focal2fov(focal_length_y, height)
@@ -105,6 +102,11 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     return cam_infos
 
 def fetchPly(path):
+    """
+    从 .ply 文件中读取点云数据。
+    :param path: .ply 文件路径
+    :return: 包含点、颜色和法线的 BasicPointCloud 对象
+    """
     plydata = PlyData.read(path)
     vertices = plydata['vertex']
     positions = np.vstack([vertices['x'], vertices['y'], vertices['z']]).T
@@ -113,7 +115,12 @@ def fetchPly(path):
     return BasicPointCloud(points=positions, colors=colors, normals=normals)
 
 def storePly(path, xyz, rgb):
-    # Define the dtype for the structured array
+    """
+    将点云数据存储到 .ply 文件中。
+    :param path: .ply 文件路径
+    :param xyz: 点坐标
+    :param rgb: 点颜色
+    """
     dtype = [('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
             ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),
             ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
@@ -124,12 +131,19 @@ def storePly(path, xyz, rgb):
     attributes = np.concatenate((xyz, normals, rgb), axis=1)
     elements[:] = list(map(tuple, attributes))
 
-    # Create the PlyData object and write to file
     vertex_element = PlyElement.describe(elements, 'vertex')
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
 def readColmapSceneInfo(path, images, eval, llffhold=8):
+    """
+    读取 Colmap 场景信息，包括相机和点云数据。
+    :param path: 场景路径
+    :param images: 图像文件夹
+    :param eval: 是否进行评估
+    :param llffhold: 用于评估的每 N 个相机中选择一个作为测试集
+    :return: SceneInfo 对象
+    """
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
@@ -177,6 +191,14 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     return scene_info
 
 def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png"):
+    """
+    从 transforms 文件中读取相机信息（适用于 Blender 数据集）。
+    :param path: 场景路径
+    :param transformsfile: transforms 文件名
+    :param white_background: 是否使用白色背景
+    :param extension: 图像文件扩展名
+    :return: 相机信息列表
+    """
     cam_infos = []
 
     with open(os.path.join(path, transformsfile)) as json_file:
@@ -219,6 +241,13 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
     return cam_infos
 
 def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
+    """
+    读取 NeRF 合成数据集的信息，包括相机和点云数据。
+    :param path: 场景路径
+    :param white_background: 是否使用白色背景
+    :param eval: 是否进行评估
+    :param extension: 图像文件扩展名
+    """
     print("Reading Training Transforms")
     train_cam_infos = readCamerasFromTransforms(path, "transforms_train.json", white_background, extension)
     print("Reading Test Transforms")
